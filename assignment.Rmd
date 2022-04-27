@@ -3,6 +3,12 @@
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 load("assignment/hotel_stays.RData")
+
+set.seed(42)
+library(tidyverse)
+library(sessioninfo)
+library(tidymodels)
+library(caret)
 ```
 
 The data set consists of `r format(nrow(hotel_stays), big.mark = ",")` data points collected by [Antonio, de Almeida, and Nunes (2019)](https://doi.org/10.1016/j.dib.2018.11.126) regarding hotel bookings. 
@@ -21,5 +27,34 @@ The assignment is to use tidymodels to
 
 * [optional] Make a PR into this repo's assignment directory to show you results. 
 
-Remember to set random number seeds to make the results reproducible and use `sessionifo::session_info()` in your code to report your versions. 
+Remember to set random number seeds to make the results reproducible and use `sessioninfo::session_info()` in your code to report your versions. 
+
+```{r train}
+train_idx <- createDataPartition(hotel_stays$children, p = .75, list = FALSE)
+hotel_train <- hotel_stays[train_idx,]
+hotel_test <- hotel_stays[-train_idx,]
+
+hotel_rec <- recipe(children ~ ., data = hotel_train) |>
+  step_dummy(all_nominal_predictors())
+
+log_mod <- 
+  logistic_reg(penalty = 0.1, mixture = 0.5) |>
+  set_engine("glmnet")
+
+glmnet_wflow <- 
+  workflow() |>
+  add_model(log_mod) |>
+  add_recipe(hotel_rec)
+
+glmnet_fit <- fit(glmnet_wflow, data = hotel_stays)
+glmnet_fit |> tidy() |> filter(estimate != 0)
+```
+
+```{r test}
+hotel_aug <- augment(glmnet_fit, hotel_test)
+
+hotel_aug |> 
+  roc_curve(truth = children, .pred_yes) |>
+  autoplot()
+```
 
