@@ -46,8 +46,7 @@ glmnet_wflow <-
   add_model(log_mod) |>
   add_recipe(hotel_rec)
 
-glmnet_fit <- fit(glmnet_wflow, data = hotel_stays)
-glmnet_fit |> tidy() |> filter(estimate != 0)
+glmnet_fit <- fit(glmnet_wflow, data = hotel_train)
 ```
 
 ```{r test}
@@ -58,3 +57,38 @@ hotel_aug |>
   autoplot()
 ```
 
+```{r cv}
+folds <- vfold_cv(hotel_train, v = 10)
+hotel_fit_rs <- 
+  glmnet_wflow |>
+  fit_resamples(folds)
+collect_metrics(hotel_fit_rs)
+```
+
+```{r tune}
+tune_log_mod <- 
+  logistic_reg(penalty = tune(), mixture = tune()) |>
+  set_engine("glmnet")
+
+tune_res <-
+  glmnet_wflow |>
+  update_model(tune_log_mod) |>
+  tune_grid(resamples = folds, grid = grid_regular(extract_parameter_set_dials(tune_log_mod)))
+
+tune_res |>
+  show_best("roc_auc")
+best_tune <- tune_res |>
+  select_best("roc_auc")
+```
+
+```{r final}
+final_wf <-
+  glmnet_wflow |>
+  finalize_workflow(best_tune)
+
+final_fit <- fit(final_wf, data = hotel_test)
+```
+
+```{r si}
+session_info()
+```
